@@ -56,6 +56,7 @@ from .exc import (
 )
 from .fields import (
     CountryField,
+    CurrencyField,
     PhoneNumberField,
     QuerySelectField,
     WeekDaysField
@@ -99,6 +100,7 @@ class FormGenerator(object):
         (sa.types.String, StringField),
         (sa.types.Time, TimeField),
         (sa.types.JSON, TextAreaField),
+        (sa.dialects.postgresql.MONEY, CurrencyField),
         (types.ArrowType, DateTimeField),
         (types.ChoiceType, SelectField),
         (types.ColorType, ColorField),

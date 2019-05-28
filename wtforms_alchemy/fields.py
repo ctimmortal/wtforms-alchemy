@@ -13,7 +13,7 @@ from wtforms.fields import FieldList, FormField, SelectFieldBase
 from wtforms.validators import ValidationError
 from wtforms.widgets import CheckboxInput, ListWidget
 from wtforms_components import SelectField, SelectMultipleField
-from wtforms_components.fields.html5 import StringField
+from wtforms_components.fields.html5 import DecimalField, StringField
 from wtforms_components.widgets import SelectWidget, TelInput
 
 from .utils import find_entity
@@ -667,3 +667,15 @@ class PhoneNumberField(StringField):
                         raise ValueError(self.gettext(self.error_msg))
                 except phonenumbers.phonenumberutil.NumberParseException:
                     raise ValueError(self.gettext(self.error_msg))
+
+
+class CurrencyField(DecimalField):
+    """
+    Define a DecimalField suitable for use with
+    `sqlalchemy.dialects.postgresql.MONEY`
+    """
+
+    def _value(self):
+        if self.data and '$' in self.data:
+            self.data = float(self.data.strip('$').replace(',', ''))
+        return super()._value()
