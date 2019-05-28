@@ -284,8 +284,19 @@ def model_form_factory(base=Form, meta=ModelFormMeta, **defaults):
             #: List of fields to only include in the generated form.
             only = defaults.pop('only', [])
 
+            #: List of column names and column properties to use in a foreign
+            #: key query
+            fk_order_strategy = defaults.pop(
+                'fk_order_strategy', ['name', 'primary_key:True']
+            )
+
         def __init__(self, *args, **kwargs):
             """Sets object as form attribute."""
+
+            if 'request' in kwargs and kwargs['request']:
+                self.get_session = kwargs['request'].dbsession
+                if 'formdata' not in kwargs:
+                    kwargs['formdata'] = kwargs['request'].params
 
             self._obj = kwargs.get('obj', None)
             super(ModelForm, self).__init__(*args, **kwargs)

@@ -8,10 +8,11 @@ except ImportError:
     Enum = None
 import inspect
 from decimal import Decimal
+from itertools import product
 
 import six
 import sqlalchemy as sa
-from sqlalchemy.orm.properties import ColumnProperty
+from sqlalchemy.orm.properties import ColumnProperty, RelationshipProperty
 from sqlalchemy_utils import types
 from wtforms import (
     BooleanField,
@@ -53,7 +54,12 @@ from .exc import (
     InvalidAttributeException,
     UnknownTypeException
 )
-from .fields import CountryField, PhoneNumberField, WeekDaysField
+from .fields import (
+    CountryField,
+    PhoneNumberField,
+    QuerySelectField,
+    WeekDaysField
+)
 from .utils import (
     choice_type_coerce_factory,
     ClassMap,
@@ -225,14 +231,17 @@ class FormGenerator(object):
         :param attributes: model attributes to generate the form fields from
         """
         for key, prop in properties.items():
-            column = prop.columns[0]
-            try:
-                field = self.create_field(prop, column)
-            except UnknownTypeException:
-                if not self.meta.skip_unknown_types:
-                    raise
-                else:
-                    continue
+            if isinstance(prop, ColumnProperty):
+                column = prop.columns[0]
+                try:
+                    field = self.create_field(prop, column)
+                except UnknownTypeException:
+                    if not self.meta.skip_unknown_types:
+                        raise
+                    else:
+                        continue
+            elif isinstance(prop, RelationshipProperty):
+                field = self.create_fk_field(prop)
 
             if not hasattr(form, key):
                 setattr(form, key, field)
@@ -371,7 +380,8 @@ class FormGenerator(object):
         if (
             hasattr(column.type, 'enums') or
             column.info.get('choices') or
-            isinstance(column.type, types.ChoiceType)
+            isinstance(column.type, types.ChoiceType) or
+            column.foreign_keys
         ):
             kwargs.update(self.select_field_kwargs(column))
 
@@ -430,7 +440,9 @@ class FormGenerator(object):
         """
         kwargs = {}
         kwargs['description'] = column.info.get('description', '')
-        kwargs['label'] = column.info.get('label', key)
+        kwargs['label'] = column.info.get(
+            'label', key.replace('_', ' ').title()
+        )
         return kwargs
 
     def select_field_kwargs(self, column):
@@ -636,3 +648,37 @@ class FormGenerator(object):
                 return column_type(column)
         except KeyError:
             raise UnknownTypeException(column)
+
+    def fk_order_by(self, columns):
+        """
+        Returns a list used in the order_by clause of SQLAlchemy query
+
+        :param columns: SQLAlchemy column collection
+        """
+        cols = []
+        for strategy, column in product(self.fk_order_strategy, columns):
+            try:
+                att, val = strategy.split(':')
+                if hasattr(column, att) and str(getattr(column, att)) == val:
+                    cols.append(column)
+            except ValueError:
+                if column.name == strategy:
+                    cols.append(column)
+        return cols
+
+    def create_fk_field(self, prop):
+        """
+        Create form field for the relationship
+        :param prop: `sqlalchemy.orm.RelationshipProperty`
+        """
+        kwargs = {}
+
+        table = prop.entitity
+        cols = self.fk_order_by(table.columns)
+        query = self.form_class.get_session.query(table).order_by(*cols)
+        kwargs['query_factory'] = query.all
+
+        if prop.key in self.meta.field_args:
+            kwargs.update(self.meta.field_args[prop.key])
+
+        return QuerySelectField(**kwargs)
